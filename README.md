@@ -44,8 +44,8 @@ import { AvatarPreview } from "@ekza/avatar-renderer/preview";
 
 ## Animations
 
-`AvatarModel` plays the clips a file ships with. Most VRMs — minted avatars in
-particular — ship none, so the package also bundles a small humanoid clip
+`AvatarModel` and `AvatarPreview` play the clips a file ships with. Most VRMs —
+minted avatars in particular — ship none, so the package also bundles a small humanoid clip
 library (`idle`, `walk`, `attack`, `cast`, `death`) that is retargeted onto the
 model's VRM humanoid at load time.
 
@@ -53,6 +53,7 @@ model's VRM humanoid at load time.
   fetched; bundlers emit it as a separate on-demand chunk.
 - The fallback needs a VRM humanoid. A plain skinned GLB without the VRM
   extension keeps its previous behaviour: embedded clips only.
+- `AvatarPreview` automatically plays the same shared `idle` fallback.
 - `onAnimationsChange` reports the merged list (embedded first, shared filling
   the gaps). `animState`, `animation` and the `tpose` stop are unchanged.
 - Opt out with `sharedAnimations={false}`; keep locomotion in place with

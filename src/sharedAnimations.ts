@@ -42,11 +42,54 @@ export function loadSharedHumanoidClips(): Promise<
  */
 const clipCache = new WeakMap<object, Map<string, AnimationClip[]>>();
 
+type SharedAvatarClipsState = {
+  humanoid: object | null;
+  cacheKey: string;
+  clips: AnimationClip[];
+};
+
 export type SharedAvatarClipsArgs = {
   vrm: VRM | null;
   vrmKind?: VrmKind;
   enabled?: boolean;
 } & Pick<RetargetOptions, "hipsPosition">;
+
+function sharedAvatarClipCacheKey(
+  vrmKind: VrmKind,
+  hipsPosition: boolean
+): string {
+  return `${vrmKind === "vrm0"}:${hipsPosition}`;
+}
+
+/**
+ * Resolve shared clips for one concrete VRM instance.
+ *
+ * Tracks target normalized-bone UUIDs, so the cache is deliberately scoped to
+ * the humanoid object rather than the model URL.
+ */
+export async function getSharedAvatarClips({
+  vrm,
+  vrmKind = "none",
+  hipsPosition = true,
+}: Omit<SharedAvatarClipsArgs, "enabled">): Promise<AnimationClip[]> {
+  if (!vrm?.humanoid) return EMPTY_CLIPS;
+
+  const humanoid = vrm.humanoid;
+  const cacheKey = sharedAvatarClipCacheKey(vrmKind, hipsPosition);
+  let perModel = clipCache.get(humanoid);
+  const cached = perModel?.get(cacheKey);
+  if (cached) return cached;
+
+  const library = await loadSharedHumanoidClips();
+  const clips = retargetHumanoidClips(library, humanoid, {
+    // The library is baked in the VRM 1.0 facing convention.
+    flipYaw: vrmKind === "vrm0",
+    hipsPosition,
+  });
+  if (!perModel) clipCache.set(humanoid, (perModel = new Map()));
+  perModel.set(cacheKey, clips);
+  return clips;
+}
 
 /**
  * Retarget the shared humanoid library onto `vrm`.
@@ -60,37 +103,37 @@ export function useSharedAvatarClips({
   enabled = true,
   hipsPosition = true,
 }: SharedAvatarClipsArgs): AnimationClip[] {
-  const [clips, setClips] = useState<AnimationClip[]>(EMPTY_CLIPS);
+  const [state, setState] = useState<SharedAvatarClipsState>({
+    humanoid: null,
+    cacheKey: "",
+    clips: EMPTY_CLIPS,
+  });
   const humanoid = vrm?.humanoid ?? null;
+  const cacheKey = sharedAvatarClipCacheKey(vrmKind, hipsPosition);
+  // Clips contain target-node UUIDs. Never expose a previous model's clips
+  // while the async library import/retarget for the current model is pending.
+  const clips =
+    enabled &&
+    humanoid !== null &&
+    state.humanoid === humanoid &&
+    state.cacheKey === cacheKey
+      ? state.clips
+      : EMPTY_CLIPS;
 
   useEffect(() => {
     if (!enabled || !humanoid) {
-      setClips(EMPTY_CLIPS);
-      return;
-    }
-
-    // The library is baked in the VRM 1.0 facing convention.
-    const retargetOptions = { flipYaw: vrmKind === "vrm0", hipsPosition };
-    const cacheKey = `${retargetOptions.flipYaw}:${hipsPosition}`;
-    let perModel = clipCache.get(humanoid);
-    const cached = perModel?.get(cacheKey);
-    if (cached) {
-      setClips(cached);
       return;
     }
 
     let cancelled = false;
-    loadSharedHumanoidClips()
-      .then((library) => {
+    getSharedAvatarClips({ vrm, vrmKind, hipsPosition })
+      .then((resolvedClips) => {
         if (cancelled) return;
-        const retargeted = retargetHumanoidClips(
-          library,
+        setState({
           humanoid,
-          retargetOptions
-        );
-        if (!perModel) clipCache.set(humanoid, (perModel = new Map()));
-        perModel.set(cacheKey, retargeted);
-        setClips(retargeted);
+          cacheKey,
+          clips: resolvedClips,
+        });
       })
       .catch((error) => {
         console.warn(
@@ -102,7 +145,7 @@ export function useSharedAvatarClips({
     return () => {
       cancelled = true;
     };
-  }, [enabled, hipsPosition, humanoid, vrmKind]);
+  }, [cacheKey, enabled, hipsPosition, humanoid, vrm, vrmKind]);
 
   useEffect(() => {
     if (!humanoid || clips.length === 0) return;

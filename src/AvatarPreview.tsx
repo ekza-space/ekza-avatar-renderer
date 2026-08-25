@@ -43,6 +43,7 @@ import {
   detectVrmKind,
   disposeVrm,
 } from "./vrm";
+import { getSharedAvatarClips } from "./sharedAnimations";
 
 export type AvatarPreviewProps = {
   url: string;
@@ -51,6 +52,10 @@ export type AvatarPreviewProps = {
   ariaLabel?: string;
   background?: string;
   autoRotate?: boolean;
+  /** Play the shared idle fallback when a VRM has no embedded clips. */
+  sharedAnimations?: boolean;
+  /** Let shared clips drive hips translation. Off keeps previews in place. */
+  sharedHipsPosition?: boolean;
   fallback?: ReactNode;
 };
 
@@ -156,6 +161,8 @@ export function AvatarPreview({
   ariaLabel = "3D avatar preview",
   background = "transparent",
   autoRotate = true,
+  sharedAnimations = true,
+  sharedHipsPosition = false,
   fallback = defaultFallback(ariaLabel),
 }: AvatarPreviewProps) {
   const mountRef = useRef<HTMLDivElement>(null);
@@ -315,7 +322,7 @@ export function AvatarPreview({
     frame = window.requestAnimationFrame(renderFrame);
 
     loadPreviewGltf(url)
-      .then(({ gltf, vrm: loadedVrm, enhancementError }) => {
+      .then(async ({ gltf, vrm: loadedVrm, enhancementError }) => {
         if (cancelled || runtimeDisposed) {
           disposeLoadedGltf(gltf, loadedVrm);
           return;
@@ -329,15 +336,48 @@ export function AvatarPreview({
           );
         }
         const vrmKind = detectVrmKind(gltf.parser?.json);
+        let animations = gltf.animations;
+        let usingSharedAnimations = false;
+        if (
+          animations.length === 0 &&
+          loadedVrm &&
+          sharedAnimations
+        ) {
+          try {
+            animations = await getSharedAvatarClips({
+              vrm: loadedVrm,
+              vrmKind,
+              hipsPosition: sharedHipsPosition,
+            });
+            usingSharedAnimations = animations.length > 0;
+          } catch (error) {
+            console.warn(
+              "[avatar-renderer] preview shared animations failed to load",
+              url,
+              error
+            );
+          }
+        }
+
+        // The effect may have been replaced while the lazy animation chunk
+        // was loading. The pending glTF is still owned here, not by runtime.
+        if (cancelled || runtimeDisposed) {
+          disposeLoadedGltf(gltf, loadedVrm);
+          return;
+        }
+
         vrm = loadedVrm;
         model = vrm?.scene ?? gltf.scene;
+        if (usingSharedAnimations && vrm) {
+          vrm.humanoid.autoUpdateHumanBones = true;
+        }
 
-        if (gltf.animations.length > 0) {
+        if (animations.length > 0) {
           mixer = new AnimationMixer(model);
           const idle =
-            gltf.animations.find(
+            animations.find(
               (clip) => clip.name.trim().toLowerCase() === "idle"
-            ) ?? gltf.animations[0];
+            ) ?? animations[0];
           mixer.clipAction(idle).play();
           // Apply the first visible pose before deriving bounds. Otherwise a
           // wide rigging T-pose can make an ordinary idle avatar look tiny.
@@ -376,7 +416,13 @@ export function AvatarPreview({
       cancelled = true;
       disposeRuntime();
     };
-  }, [autoRotate, background, url]);
+  }, [
+    autoRotate,
+    background,
+    sharedAnimations,
+    sharedHipsPosition,
+    url,
+  ]);
 
   if (!url) return <>{fallback}</>;
 
