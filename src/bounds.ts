@@ -12,6 +12,14 @@ export type AvatarBounds = {
   maxY: number;
 };
 
+/** Full posed bounds used by self-contained previews for camera framing. */
+export type AvatarSpatialBounds = AvatarBounds & {
+  minX: number;
+  maxX: number;
+  minZ: number;
+  maxZ: number;
+};
+
 type PositionAttribute = Pick<
   BufferAttribute,
   "count" | "getX" | "getY" | "getZ"
@@ -83,7 +91,7 @@ function applyMorphTargets(
  * bone transforms, which can make two equally sized avatars differ by an
  * order of magnitude after normalization.
  */
-export function measureAvatarBounds(root: Object3D): AvatarBounds {
+export function measureAvatarSpatialBounds(root: Object3D): AvatarSpatialBounds {
   root.updateMatrixWorld(true);
 
   const bounds = new Box3().makeEmpty();
@@ -127,6 +135,28 @@ export function measureAvatarBounds(root: Object3D): AvatarBounds {
     }
   });
 
-  if (bounds.isEmpty()) return { minY: 0, maxY: 0 };
-  return { minY: bounds.min.y, maxY: bounds.max.y };
+  if (bounds.isEmpty()) {
+    return {
+      minX: 0,
+      maxX: 0,
+      minY: 0,
+      maxY: 0,
+      minZ: 0,
+      maxZ: 0,
+    };
+  }
+  return {
+    minX: bounds.min.x,
+    maxX: bounds.max.x,
+    minY: bounds.min.y,
+    maxY: bounds.max.y,
+    minZ: bounds.min.z,
+    maxZ: bounds.max.z,
+  };
+}
+
+/** Backward-compatible vertical-only view of the posed avatar bounds. */
+export function measureAvatarBounds(root: Object3D): AvatarBounds {
+  const { minY, maxY } = measureAvatarSpatialBounds(root);
+  return { minY, maxY };
 }
