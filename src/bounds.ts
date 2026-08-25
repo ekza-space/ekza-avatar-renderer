@@ -17,6 +17,24 @@ type PositionAttribute = Pick<
   "count" | "getX" | "getY" | "getZ"
 >;
 
+type CompatibleSkinnedMesh = SkinnedMesh & {
+  applyBoneTransform?: (index: number, target: Vector3) => Vector3;
+  boneTransform?: (index: number, target: Vector3) => Vector3;
+};
+
+function applySkinning(
+  mesh: CompatibleSkinnedMesh,
+  index: number,
+  target: Vector3
+) {
+  if (typeof mesh.applyBoneTransform === "function") {
+    mesh.applyBoneTransform(index, target);
+    return;
+  }
+  // Three r139-r151 used the previous method name.
+  mesh.boneTransform?.(index, target);
+}
+
 function readPosition(
   target: Vector3,
   attribute: PositionAttribute,
@@ -82,7 +100,7 @@ export function measureAvatarBounds(root: Object3D): AvatarBounds {
     ) as PositionAttribute | undefined;
     if (!positionAttribute) return;
 
-    const skinnedMesh = mesh as SkinnedMesh;
+    const skinnedMesh = mesh as CompatibleSkinnedMesh;
     if (skinnedMesh.isSkinnedMesh) skinnedMesh.skeleton.update();
 
     for (let index = 0; index < positionAttribute.count; index += 1) {
@@ -95,7 +113,7 @@ export function measureAvatarBounds(root: Object3D): AvatarBounds {
         morphPosition
       );
       if (skinnedMesh.isSkinnedMesh) {
-        skinnedMesh.boneTransform(index, position);
+        applySkinning(skinnedMesh, index, position);
       }
       position.applyMatrix4(mesh.matrixWorld);
 

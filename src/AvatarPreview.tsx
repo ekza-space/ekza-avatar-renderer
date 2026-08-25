@@ -1,4 +1,4 @@
-import { VRM } from "@pixiv/three-vrm";
+import type { VRM } from "@pixiv/three-vrm";
 import {
   useEffect,
   useRef,
@@ -15,7 +15,6 @@ import {
   Mesh,
   PerspectiveCamera,
   Scene,
-  sRGBEncoding,
   Texture,
   WebGLRenderer,
   type Material,
@@ -28,7 +27,12 @@ import {
 } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { normalizeAvatarBounds } from "./normalization";
 import { measureAvatarBounds } from "./bounds";
-import { configureAvatarGltfLoader, detectVrmKind } from "./vrm";
+import {
+  buildVrmInstance,
+  configureAvatarGltfLoader,
+  detectVrmKind,
+  disposeVrm,
+} from "./vrm";
 
 export type AvatarPreviewProps = {
   url: string;
@@ -64,6 +68,19 @@ function disposeObject(root: Object3D) {
       : [object.material];
     materials.forEach(disposeMaterial);
   });
+}
+
+function configureSrgbOutput(renderer: WebGLRenderer) {
+  const compatibleRenderer = renderer as unknown as {
+    outputColorSpace?: string;
+    outputEncoding?: number;
+  };
+  if (typeof compatibleRenderer.outputColorSpace === "string") {
+    compatibleRenderer.outputColorSpace = "srgb";
+  } else {
+    // THREE.sRGBEncoding in r139. Avoid importing a symbol removed in r152.
+    compatibleRenderer.outputEncoding = 3001;
+  }
 }
 
 /**
@@ -113,7 +130,7 @@ export function AvatarPreview({
       setFailed(true);
       return;
     }
-    renderer.outputEncoding = sRGBEncoding;
+    configureSrgbOutput(renderer);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     if (background === "transparent") {
       renderer.setClearColor(0x000000, 0);
@@ -178,9 +195,9 @@ export function AvatarPreview({
         }
 
         const vrmKind = detectVrmKind(gltf.parser?.json);
-        if (vrmKind === "vrm0") {
+        if (vrmKind !== "none") {
           try {
-            vrm = await VRM.from(gltf);
+            vrm = await buildVrmInstance(url);
           } catch (error) {
             console.warn(
               "[avatar-renderer] preview VRM enhancement failed; using base glTF",
@@ -190,12 +207,13 @@ export function AvatarPreview({
           }
         }
         if (cancelled) {
-          if (vrm) vrm.dispose();
-          else disposeObject(gltf.scene);
+          if (vrm) disposeVrm(vrm);
+          disposeObject(gltf.scene);
           return;
         }
 
         model = vrm?.scene ?? gltf.scene;
+        if (vrm) disposeObject(gltf.scene);
         const bounds = measureAvatarBounds(model);
         const normalization = normalizeAvatarBounds({
           minY: bounds.minY,
@@ -233,7 +251,7 @@ export function AvatarPreview({
       controls.dispose();
       mixer?.stopAllAction();
       if (modelRoot) scene.remove(modelRoot);
-      if (vrm) vrm.dispose();
+      if (vrm) disposeVrm(vrm);
       else if (model) disposeObject(model);
       renderer.dispose();
       renderer.domElement.remove();

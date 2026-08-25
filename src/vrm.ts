@@ -1,5 +1,9 @@
 import { useEffect, useState } from "react";
-import { VRM } from "@pixiv/three-vrm";
+import {
+  VRMLoaderPlugin,
+  VRMUtils,
+  type VRM,
+} from "@pixiv/three-vrm";
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
 import {
   GLTFLoader,
@@ -42,6 +46,13 @@ export function configureAvatarGltfLoader(loader: GLTFLoader): GLTFLoader {
   return loader.setDRACOLoader(getDracoLoader());
 }
 
+/** Add modern VRM 0.x/1.x decoding to the shared Draco-enabled loader. */
+export function configureAvatarVrmLoader(loader: GLTFLoader): GLTFLoader {
+  configureAvatarGltfLoader(loader);
+  loader.register((parser) => new VRMLoaderPlugin(parser));
+  return loader;
+}
+
 // Network bytes are shared, parsed VRM scene graphs are not. VRM managers hold
 // direct bone references, so every visible instance must receive a fresh parse.
 const bufferCache = new Map<string, Promise<ArrayBuffer>>();
@@ -61,10 +72,14 @@ function fetchModelBuffer(url: string): Promise<ArrayBuffer> {
   return cached;
 }
 
-function parseGltf(url: string, buffer: ArrayBuffer): Promise<GLTF> {
+function parseGltf(
+  url: string,
+  buffer: ArrayBuffer,
+  configure: (loader: GLTFLoader) => GLTFLoader
+): Promise<GLTF> {
   return new Promise((resolve, reject) => {
     const loader = new GLTFLoader();
-    configureAvatarGltfLoader(loader);
+    configure(loader);
     const lastSlash = url.lastIndexOf("/");
     const resourcePath = lastSlash >= 0 ? url.slice(0, lastSlash + 1) : "";
     loader.parse(buffer, resourcePath, resolve, reject);
@@ -73,10 +88,20 @@ function parseGltf(url: string, buffer: ArrayBuffer): Promise<GLTF> {
 
 export async function buildVrmInstance(url: string): Promise<VRM> {
   const buffer = await fetchModelBuffer(url);
-  return VRM.from(await parseGltf(url, buffer));
+  const gltf = await parseGltf(url, buffer, configureAvatarVrmLoader);
+  const vrm = gltf.userData.vrm as VRM | undefined;
+  if (!vrm) {
+    throw new Error(`Model is not a VRM asset: ${url}`);
+  }
+  return vrm;
 }
 
-/** Upgrade VRM 0.x to full materials/spring-bones; plain glTF stays visible on failure. */
+/** Dispose a v1+ VRM scene without relying on the removed `VRM.dispose()`. */
+export function disposeVrm(vrm: VRM): void {
+  VRMUtils.deepDispose(vrm.scene);
+}
+
+/** Upgrade VRM 0.x/1.x to full materials/spring-bones; keep glTF on failure. */
 export function useVrmEnhancement(
   url: string,
   vrmKind: VrmKind
@@ -85,13 +110,13 @@ export function useVrmEnhancement(
 
   useEffect(() => {
     setVrm(null);
-    if (vrmKind !== "vrm0" || !url) return;
+    if (vrmKind === "none" || !url) return;
 
     let cancelled = false;
     buildVrmInstance(url)
       .then((instance) => {
         if (cancelled) {
-          instance.dispose();
+          disposeVrm(instance);
           return;
         }
         setVrm(instance);
@@ -109,6 +134,8 @@ export function useVrmEnhancement(
     };
   }, [url, vrmKind]);
 
-  useEffect(() => () => vrm?.dispose(), [vrm]);
+  useEffect(() => () => {
+    if (vrm) disposeVrm(vrm);
+  }, [vrm]);
   return vrm;
 }

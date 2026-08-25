@@ -12,10 +12,10 @@ export default defineConfig({
   sourcemap: true,
   treeshake: true,
   external: [
+    "@pixiv/three-vrm",
     "@react-three/fiber",
     "react",
     "react-dom",
     "three",
   ],
-  noExternal: ["@pixiv/three-vrm"],
 });

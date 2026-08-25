@@ -7,8 +7,9 @@ Shared avatar rendering boundary for Ekza surfaces.
   Space supplies movement, physics and labels around it.
 - `AvatarPreview` (`@ekza/avatar-renderer/preview`) supplies its own plain-Three
   canvas, camera, lights and orbit controls for cards and apps such as Arena.
-- VRM 0.x receives the legacy Space material/spring-bone enhancement; VRM 1.x
-  remains a valid glTF fallback until the Space Three.js stack is upgraded.
+- VRM 0.x and 1.x use the same `VRMLoaderPlugin` material, humanoid and
+  spring-bone path. The renderer keeps compatibility with host Three.js
+  versions from r137 onward.
 
 The package intentionally does not read Solana or off-chain NFT metadata.
 Resolve ownership and `modelUrl` through `@ekza/stellar-sdk/avatars`, then pass

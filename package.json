@@ -1,6 +1,6 @@
 {
   "name": "@ekza/avatar-renderer",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Shared GLB/VRM avatar renderer for Ekza Space and Arena.",
   "license": "MIT",
   "type": "module",
@@ -35,30 +35,28 @@
     "prepare": "npm run build",
     "prepublishOnly": "npm run test && npm run typecheck && npm run build"
   },
+  "dependencies": {
+    "@pixiv/three-vrm": "3.5.5"
+  },
   "peerDependencies": {
-    "@pixiv/three-vrm": "^0.6.11",
-    "@react-three/fiber": ">=8.8.0 <9",
+    "@react-three/fiber": ">=8.8.0 <10",
     "react": ">=18 <20",
     "react-dom": ">=18 <20",
-    "three": ">=0.137.4 <0.140"
+    "three": ">=0.137"
   },
   "peerDependenciesMeta": {
-    "@pixiv/three-vrm": {
-      "optional": true
-    },
     "@react-three/fiber": {
       "optional": true
     }
   },
   "devDependencies": {
-    "@pixiv/three-vrm": "0.6.11",
-    "@react-three/fiber": "8.8.10",
+    "@react-three/fiber": "8.18.0",
     "@types/react": "18.3.28",
     "@types/react-dom": "18.3.7",
-    "@types/three": "0.137.0",
+    "@types/three": "0.185.4",
     "react": "18.3.1",
     "react-dom": "18.3.1",
-    "three": "^0.137.4",
+    "three": "0.185.1",
     "tsup": "8.5.1",
     "typescript": "5.9.3",
     "vitest": "4.1.10"
