@@ -1,6 +1,10 @@
 import { useFrame, useLoader } from "@react-three/fiber";
-import { useEffect, useMemo } from "react";
-import { AnimationMixer, type Object3D } from "three";
+import { useEffect, useMemo, useRef } from "react";
+import {
+  AnimationMixer,
+  type AnimationAction,
+  type Object3D,
+} from "three";
 import {
   GLTFLoader,
   type GLTF,
@@ -34,6 +38,10 @@ export type AvatarModelProps = {
   avatarHeightScale?: number;
   groundOffset?: number;
   animState?: AvatarAnimationState;
+  /** Exact embedded clip name. `tpose` stops all clips. */
+  animation?: string;
+  /** Reports embedded clip names so host UIs can offer an animation picker. */
+  onAnimationsChange?: (animations: string[]) => void;
   targetHeight?: number;
   castShadow?: boolean;
 };
@@ -50,6 +58,8 @@ export function AvatarModel({
   avatarHeightScale,
   groundOffset = 0,
   animState = "idle",
+  animation,
+  onAnimationsChange,
   targetHeight = 1,
   castShadow = true,
 }: AvatarModelProps) {
@@ -84,11 +94,29 @@ export function AvatarModel({
       ),
     [mixer, original.animations]
   );
+  const previousAction = useRef<AnimationAction | null>(null);
+
+  const activeAction = useMemo(() => {
+    const requested = animation?.trim();
+    if (requested?.toLowerCase() === "tpose") return null;
+
+    const requestedName = requested || animState;
+    const exact = actions[requestedName];
+    if (exact) return exact;
+
+    const normalizedName = requestedName.toLowerCase();
+    return (
+      Object.entries(actions).find(
+        ([name]) => name.trim().toLowerCase() === normalizedName
+      )?.[1] ?? null
+    );
+  }, [actions, animState, animation]);
 
   useEffect(
     () => () => {
       mixer.stopAllAction();
       mixer.uncacheRoot(model);
+      previousAction.current = null;
     },
     [mixer, model]
   );
@@ -99,6 +127,10 @@ export function AvatarModel({
       object.frustumCulled = false;
     });
   }, [castShadow, model]);
+
+  useEffect(() => {
+    onAnimationsChange?.(original.animations.map((clip) => clip.name));
+  }, [onAnimationsChange, original.animations]);
 
   // Measure the unscaled rendered scene once. Static geometry bounds ignore
   // skinning and include all morph-target extremes; both are common in VRM.
@@ -122,19 +154,17 @@ export function AvatarModel({
   ]);
 
   useEffect(() => {
-    actions.idle?.play();
-  }, [actions.idle]);
-
-  useEffect(() => {
-    if (!actions.idle || !actions.walk) return;
-    if (animState === "walk") {
-      actions.idle.fadeOut(0.2);
-      actions.walk.reset().fadeIn(0.2).play();
-    } else {
-      actions.walk.fadeOut(0.2);
-      actions.idle.reset().fadeIn(0.2).play();
+    const previous = previousAction.current;
+    if (previous === activeAction) {
+      activeAction?.play();
+      return;
     }
-  }, [actions.idle, actions.walk, animState]);
+
+    previous?.fadeOut(0.2);
+    if (activeAction) activeAction.reset().fadeIn(0.2).play();
+    else mixer.stopAllAction();
+    previousAction.current = activeAction;
+  }, [activeAction, mixer]);
 
   useFrame((_, delta) => {
     mixer.update(delta);
