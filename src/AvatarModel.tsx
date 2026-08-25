@@ -1,6 +1,6 @@
 import { useFrame, useLoader } from "@react-three/fiber";
 import { useEffect, useMemo } from "react";
-import { AnimationMixer, Box3, type Object3D } from "three";
+import { AnimationMixer, type Object3D } from "three";
 import {
   GLTFLoader,
   type GLTF,
@@ -11,7 +11,11 @@ import {
   detectVrmKind,
   useVrmEnhancement,
 } from "./vrm";
-import { normalizeAvatarBounds } from "./normalization";
+import {
+  normalizeAvatarBounds,
+  readEmbeddedAvatarHeightScale,
+} from "./normalization";
+import { measureAvatarBounds } from "./bounds";
 
 // @types/three@0.137 declared a namespace while the matching runtime already
 // exported named functions. Keep the compatibility cast local to this seam.
@@ -24,7 +28,10 @@ export type AvatarAnimationState = "idle" | "walk";
 export type AvatarModelProps = {
   url: string;
   rotationY?: number;
+  /** Instance-level scale applied after height normalization. */
   avatarScale?: number;
+  /** Stable model-specific multiplier; glTF extras are used when omitted. */
+  avatarHeightScale?: number;
   groundOffset?: number;
   animState?: AvatarAnimationState;
   targetHeight?: number;
@@ -40,6 +47,7 @@ export function AvatarModel({
   url,
   rotationY = 0,
   avatarScale = 1,
+  avatarHeightScale,
   groundOffset = 0,
   animState = "idle",
   targetHeight = 1,
@@ -56,6 +64,11 @@ export function AvatarModel({
     () => detectVrmKind(original.parser?.json),
     [original.parser?.json]
   );
+  const embeddedHeightScale = useMemo(
+    () => readEmbeddedAvatarHeightScale(original.parser?.json),
+    [original.parser?.json]
+  );
+  const resolvedHeightScale = avatarHeightScale ?? embeddedHeightScale;
   const clonedScene = useMemo(
     () => cloneSkeleton(original.scene),
     [original.scene]
@@ -87,17 +100,26 @@ export function AvatarModel({
     });
   }, [castShadow, model]);
 
+  // Measure the unscaled rendered scene once. Static geometry bounds ignore
+  // skinning and include all morph-target extremes; both are common in VRM.
+  // The outer group below remains the sole owner of normalization transforms.
+  const sourceBounds = useMemo(() => measureAvatarBounds(model), [model]);
+
   const normalization = useMemo(() => {
-    model.updateMatrixWorld(true);
-    const box = new Box3().setFromObject(model);
     return normalizeAvatarBounds({
-      minY: box.min.y,
-      maxY: box.max.y,
-      targetHeight,
+      minY: sourceBounds.minY,
+      maxY: sourceBounds.maxY,
+      targetHeight: targetHeight * resolvedHeightScale,
       avatarScale,
       groundOffset,
     });
-  }, [avatarScale, groundOffset, model, targetHeight]);
+  }, [
+    avatarScale,
+    groundOffset,
+    resolvedHeightScale,
+    sourceBounds,
+    targetHeight,
+  ]);
 
   useEffect(() => {
     actions.idle?.play();
@@ -120,11 +142,12 @@ export function AvatarModel({
   });
 
   return (
-    <primitive
+    <group
       rotation={[0, rotationY + facingCorrection, 0]}
-      object={model}
       scale={normalization.scale}
       position={[0, normalization.positionY, 0]}
-    />
+    >
+      <primitive object={model} />
+    </group>
   );
 }

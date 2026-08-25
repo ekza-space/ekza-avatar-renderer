@@ -9,9 +9,9 @@ import {
 import {
   AmbientLight,
   AnimationMixer,
-  Box3,
   Color,
   DirectionalLight,
+  Group,
   Mesh,
   PerspectiveCamera,
   Scene,
@@ -27,6 +27,7 @@ import {
   type GLTF,
 } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { normalizeAvatarBounds } from "./normalization";
+import { measureAvatarBounds } from "./bounds";
 import { configureAvatarGltfLoader, detectVrmKind } from "./vrm";
 
 export type AvatarPreviewProps = {
@@ -90,6 +91,7 @@ export function AvatarPreview({
     let cancelled = false;
     let frame = 0;
     let model: Object3D | null = null;
+    let modelRoot: Group | null = null;
     let vrm: VRM | null = null;
     let mixer: AnimationMixer | null = null;
     setReady(false);
@@ -194,17 +196,18 @@ export function AvatarPreview({
         }
 
         model = vrm?.scene ?? gltf.scene;
-        model.rotation.y = vrmKind === "vrm0" ? Math.PI : 0;
-        model.updateMatrixWorld(true);
-        const bounds = new Box3().setFromObject(model);
+        const bounds = measureAvatarBounds(model);
         const normalization = normalizeAvatarBounds({
-          minY: bounds.min.y,
-          maxY: bounds.max.y,
+          minY: bounds.minY,
+          maxY: bounds.maxY,
           avatarScale: 1.45,
         });
-        model.scale.setScalar(normalization.scale);
-        model.position.y = normalization.positionY;
-        scene.add(model);
+        modelRoot = new Group();
+        modelRoot.rotation.y = vrmKind === "vrm0" ? Math.PI : 0;
+        modelRoot.scale.setScalar(normalization.scale);
+        modelRoot.position.y = normalization.positionY;
+        modelRoot.add(model);
+        scene.add(modelRoot);
 
         if (gltf.animations.length > 0) {
           mixer = new AnimationMixer(model);
@@ -229,7 +232,7 @@ export function AvatarPreview({
       if (!resizeObserver) window.removeEventListener("resize", resize);
       controls.dispose();
       mixer?.stopAllAction();
-      if (model) scene.remove(model);
+      if (modelRoot) scene.remove(modelRoot);
       if (vrm) vrm.dispose();
       else if (model) disposeObject(model);
       renderer.dispose();
