@@ -1,7 +1,7 @@
 {
   "name": "@ekza/avatar-renderer",
-  "version": "0.2.0",
-  "description": "Shared GLB/VRM avatar renderer for Ekza Space and Arena.",
+  "version": "0.3.0",
+  "description": "Shared GLB/VRM avatar and item renderer for Ekza apps and games.",
   "license": "MIT",
   "type": "module",
   "sideEffects": false,
