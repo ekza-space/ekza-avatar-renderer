@@ -120,9 +120,18 @@ import { AssetPreview, PREVIEW_LIGHTING_PRESETS } from "@ekza/avatar-renderer/pr
   downloading or parsing the model again. Each variant gets fresh visible bounds.
 - `integrity`: verify exact size/SHA-256 before parsing. `maxBytes` defaults to
   64 MiB, with a streaming limit, abort on unmount and a 30-second load timeout.
-  Downloads omit credentials and refuse redirects. `embeddedOnly` blocks external
+  Downloads omit credentials by default and refuse redirects. `embeddedOnly` blocks external
   resource URLs; embedded blob/data resources remain supported. Existing Draco
   support may use the shared decoder configured by the package.
+- `playAnimations`: opt into embedded animation for an item such as a waving
+  sculpture. Avatars retain their existing animated default; items remain static
+  unless enabled. An idle clip is preferred, otherwise the first embedded clip.
+  Shared humanoid fallback clips remain avatar-only. Set `false` to freeze either
+  kind. The preview owns and cleans up its animation mixer.
+- `fetchCredentials`: `omit` by default; `same-origin` enables the host's private
+  model proxy to use its existing session cookie. Cross-origin credential
+  inclusion is unsupported, and redirects remain forbidden. Use an approved
+  proxy URL with `integrity` and `embeddedOnly` for private moderation previews.
 - `onStateChange`: `loading`, `ready`, `failed`. Supply a localized `fallback`.
   Unsupported/lost WebGL contexts fall back; unmount releases GPU resources.
 

@@ -1,16 +1,20 @@
 /** Optional byte identity for a registry's approved rendition. */
 export type PreviewIntegrity = { sha256: string; sizeBytes: number };
+/** Same-origin cookies are opt-in for private application proxy routes. */
+export type PreviewCredentials = "omit" | "same-origin";
 export const DEFAULT_PREVIEW_MAX_BYTES = 64 * 1024 * 1024;
 
-/** No credentials or redirects; bounded streaming and cancellation before parsing. */
+/** Credentials omitted by default, no redirects; bounded streaming before parsing. */
 export async function downloadPreview(
   url: string, signal: AbortSignal, maxBytes = DEFAULT_PREVIEW_MAX_BYTES, integrity?: PreviewIntegrity,
+  credentials: PreviewCredentials = "omit",
 ): Promise<ArrayBuffer> {
+  if (credentials !== "omit" && credentials !== "same-origin") throw new Error("Invalid preview credentials mode");
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) throw new Error("Invalid preview byte limit");
   if (integrity && (!/^[a-f0-9]{64}$/.test(integrity.sha256) ||
     !Number.isSafeInteger(integrity.sizeBytes) || integrity.sizeBytes < 1 || integrity.sizeBytes > maxBytes))
     throw new Error("Invalid preview identity");
-  const response = await fetch(url, { signal, credentials: "omit", redirect: "error" });
+  const response = await fetch(url, { signal, credentials, redirect: "error" });
   if (!response.ok || !response.body) throw new Error("Model download unavailable");
   const reader = response.body.getReader();
   let size = 0;
