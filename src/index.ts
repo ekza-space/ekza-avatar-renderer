@@ -10,4 +10,4 @@ export * from "./vrm";
 
 export * from "./AssetPreview";
 export * from "./previewSettings";
-export type { PreviewIntegrity } from "./previewDownload";
+export type { PreviewIntegrity, PreviewCredentials } from "./previewDownload";

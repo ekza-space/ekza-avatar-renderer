@@ -47,6 +47,7 @@ import {
   disposeVrm,
 } from "./vrm";
 import { getSharedAvatarClips } from "./sharedAnimations";
+import { startPreviewAnimation } from "./previewAnimation";
 
 export type AssetPreviewProps = {
   kind?: "avatar" | "item";
@@ -60,6 +61,10 @@ export type AssetPreviewProps = {
   maxBytes?: number;
   /** Restrict parsing to a self-contained GLB; no external model resources. */
   embeddedOnly?: boolean;
+  /** Play embedded clips. Defaults to true for avatars, false for items. */
+  playAnimations?: boolean;
+  /** Private same-origin proxy access; cross-origin credentials are never enabled. */
+  fetchCredentials?: PreviewCredentials;
   onStateChange?: (state: "loading" | "ready" | "failed") => void;
   url: string;
   className?: string;
@@ -74,7 +79,7 @@ export type AssetPreviewProps = {
   fallback?: ReactNode;
 };
 
-import { downloadPreview, DEFAULT_PREVIEW_MAX_BYTES, type PreviewIntegrity } from "./previewDownload";
+import { downloadPreview, DEFAULT_PREVIEW_MAX_BYTES, type PreviewIntegrity, type PreviewCredentials } from "./previewDownload";
 import { bindPreviewVariants, createPreviewShading, PREVIEW_LIGHTING_PRESETS,
   type PreviewLighting, type PreviewShading, type PreviewVariant } from "./previewSettings";
 
@@ -132,8 +137,9 @@ function gltfVrm(gltf: GLTF): VRM | null {
  * extension gets one plain-glTF retry so its geometry and clips remain usable.
  */
 async function loadPreviewGltf(url: string, signal: AbortSignal, maxBytes: number,
-  integrity: PreviewIntegrity | undefined, embeddedOnly: boolean): Promise<LoadedPreviewGltf> {
-  const bytes = await downloadPreview(url, signal, maxBytes, integrity);
+  integrity: PreviewIntegrity | undefined, embeddedOnly: boolean,
+  credentials: PreviewCredentials): Promise<LoadedPreviewGltf> {
+  const bytes = await downloadPreview(url, signal, maxBytes, integrity, credentials);
   const manager = new LoadingManager();
   if (embeddedOnly) manager.setURLModifier((resource) => {
     if (!resource.startsWith("blob:") && !resource.startsWith("data:"))
@@ -188,6 +194,8 @@ export function AssetPreview({
   variants, variant, integrity,
   maxBytes = DEFAULT_PREVIEW_MAX_BYTES,
   embeddedOnly = false,
+  playAnimations = kind === "avatar",
+  fetchCredentials = "omit",
   onStateChange,
   url,
   className,
@@ -410,7 +418,7 @@ export function AssetPreview({
     frame = window.requestAnimationFrame(renderFrame);
 
     const loadTimeout = window.setTimeout(() => controller.abort(), 30_000);
-    loadPreviewGltf(url, controller.signal, maxBytes, integrity, embeddedOnly)
+    loadPreviewGltf(url, controller.signal, maxBytes, integrity, embeddedOnly, fetchCredentials)
       .then(async ({ gltf, vrm: loadedVrm, enhancementError }) => {
         window.clearTimeout(loadTimeout);
         if (cancelled || runtimeDisposed) {
@@ -431,7 +439,7 @@ export function AssetPreview({
         if (
           animations.length === 0 &&
           loadedVrm &&
-          sharedAnimations && kind === "avatar"
+          sharedAnimations && kind === "avatar" && playAnimations
         ) {
           try {
             animations = await getSharedAvatarClips({
@@ -462,18 +470,8 @@ export function AssetPreview({
           vrm.humanoid.autoUpdateHumanBones = true;
         }
 
-        if (kind === "avatar" && animations.length > 0) {
-          mixer = new AnimationMixer(model);
-          const idle =
-            animations.find(
-              (clip) => clip.name.trim().toLowerCase() === "idle"
-            ) ?? animations[0];
-          mixer.clipAction(idle).play();
-          // Apply the first visible pose before deriving bounds. Otherwise a
-          // wide rigging T-pose can make an ordinary idle avatar look tiny.
-          mixer.update(0);
-          vrm?.update(0);
-        }
+        mixer = startPreviewAnimation(model, animations, playAnimations);
+        if (mixer) vrm?.update(0);
 
         if (variants?.length) {
           selectVariant = bindPreviewVariants(model, gltf.parser.associations, gltf.parser.json.nodes ?? [], variants);
@@ -529,6 +527,8 @@ export function AssetPreview({
     integrity?.sha256,
     integrity?.sizeBytes,
     embeddedOnly,
+    playAnimations,
+    fetchCredentials,
     maxBytes,
     background,
     sharedAnimations,
