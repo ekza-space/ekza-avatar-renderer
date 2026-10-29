@@ -7,3 +7,7 @@ export * from "./normalization";
 export * from "./previewFraming";
 export * from "./sharedAnimations";
 export * from "./vrm";
+
+export * from "./AssetPreview";
+export * from "./previewSettings";
+export type { PreviewIntegrity, PreviewCredentials } from "./previewDownload";

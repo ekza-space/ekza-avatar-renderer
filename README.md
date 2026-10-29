@@ -1,6 +1,6 @@
 # @ekza/avatar-renderer
 
-Shared avatar rendering boundary for Ekza surfaces.
+Shared avatar and item rendering boundary for Ekza surfaces.
 
 - `AvatarModel` (`@ekza/avatar-renderer/model`) renders a GLB/VRM inside an
   existing React Three Fiber canvas.
@@ -80,3 +80,87 @@ The bundled clips come from the **Universal Animation Library** by
 [Open Source Avatars](https://github.com/ToxSam/open-source-avatars)) VRM rig
 shipped with Ekza Space. CC0 requires no attribution; it is credited as good
 practice.
+
+## Item previews and lighting
+
+`AssetPreview` (from `@ekza/avatar-renderer/preview`) uses the same plain-Three
+runtime as `AvatarPreview`. It accepts static GLB items without applying humanoid
+height or idle-animation rules. Existing `AvatarPreview` imports remain supported;
+`AvatarModel` in Space's R3F scene is unchanged.
+
+```tsx
+import { AssetPreview, PREVIEW_LIGHTING_PRESETS } from "@ekza/avatar-renderer/preview";
+
+<AssetPreview
+  url={approved.downloadUrl}
+  kind="item"
+  integrity={{ sha256: approved.sha256, sizeBytes: approved.sizeBytes }}
+  embeddedOnly
+  lighting={PREVIEW_LIGHTING_PRESETS.studio}
+  shading="original"
+  exposure={1}
+  autoRotate={false}
+  style={{ height: 420 }}
+/>
+```
+
+- `kind`: `item` (default, fits the longest dimension) or `avatar` (posed-height
+  normalization, embedded animations / shared VRM idle).
+- `lighting`: `studio`, `daylight`, `dramatic` presets or a custom object with
+  `ambient`, `key`, and `fill` colors/intensities and directional positions.
+- `shading`: `original` preserves file materials; `clay` and `wireframe` are
+  temporary instance overrides. Originals are restored on cleanup.
+- `toneMapping`: `aces` (item default) or `none` (legacy avatar default).
+  `exposure` ranges from 0.1 to 4 and affects ACES tone mapping.
+- `variants`: host-defined `{ id, nodeName, scale? }[]`, with a selected `variant`.
+  Parts are matched to original glTF node names through parser associations.
+  A host may explicitly use `scale: 1` for alternates authored at zero scale.
+  Missing variants fail the preview; game conventions stay outside the SDK.
+- Lighting, shading, rotation and variant changes update the live scene without
+  downloading or parsing the model again. Each variant gets fresh visible bounds.
+- `integrity`: verify exact size/SHA-256 before parsing. `maxBytes` defaults to
+  64 MiB, with a streaming limit, abort on unmount and a 30-second load timeout.
+  Downloads omit credentials by default and refuse redirects. `embeddedOnly` blocks external
+  resource URLs; embedded blob/data resources remain supported. Existing Draco
+  support may use the shared decoder configured by the package.
+- `playAnimations`: opt into embedded animation for an item such as a waving
+  sculpture. Avatars retain their existing animated default; items remain static
+  unless enabled. An idle clip is preferred, otherwise the first embedded clip.
+  Shared humanoid fallback clips remain avatar-only. Set `false` to freeze either
+  kind. The preview owns and cleans up its animation mixer.
+- `fetchCredentials`: `omit` by default; `same-origin` enables the host's private
+  model proxy to use its existing session cookie. Cross-origin credential
+  inclusion is unsupported, and redirects remain forbidden. Use an approved
+  proxy URL with `integrity` and `embeddedOnly` for private moderation previews.
+- `onStateChange`: `loading`, `ready`, `failed`. Supply a localized `fallback`.
+  Unsupported/lost WebGL contexts fall back; unmount releases GPU resources.
+
+Resolve authorization and approved URLs in the host. Open previews on demand,
+keep a poster fallback, and prefer one active canvas for a catalogue. Web lighting
+is illustrative, not a promise of pixel-identical results in a game engine.
+## Framework-independent runtime
+
+`@ekza/avatar-renderer/runtime` exposes the same VRM loader, disposal, bounded
+model-byte cache, posed bounds, normalization, camera framing and shared
+humanoid animations without importing React or R3F. React peers are optional
+for applications using only this entry point. Existing React exports and hooks
+remain compatible and share these exact runtime functions and caches.
+
+```ts
+import { buildVrmAsset, getSharedAvatarClips, disposeVrmAsset } from '@ekza/avatar-renderer/runtime';
+const asset = await buildVrmAsset(url);
+// Supply the detected VRM kind when retargeting shared clips.
+const clips = asset.animations.length ? asset.animations : await getSharedAvatarClips({
+  vrm: asset.vrm, vrmKind: asset.vrm.meta?.metaVersion === '0' ? 'vrm0' : 'vrm1',
+  hipsPosition: false,
+});
+// Shared clips drive normalized bones; embedded clips drive raw bones.
+asset.vrm.humanoid.autoUpdateHumanBones = asset.animations.length === 0;
+// The host owns its mixer, canvas and scene lifecycle.
+// On replacement/unmount, stop and uncache the mixer before disposing the asset.
+disposeVrmAsset(asset);
+```
+
+The local `assets-browser` app consumes this runtime for both interactive
+inspection and transparent thumbnail rendering. Rebuild its browser bundle
+with `npm run build` after changing the SDK.
