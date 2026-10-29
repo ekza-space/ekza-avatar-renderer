@@ -23,6 +23,11 @@
       "types": "./dist/preview.d.ts",
       "import": "./dist/preview.js",
       "require": "./dist/preview.cjs"
+    },
+    "./runtime": {
+      "types": "./dist/runtime.d.ts",
+      "import": "./dist/runtime.js",
+      "require": "./dist/runtime.cjs"
     }
   },
   "main": "./dist/index.cjs",
@@ -46,6 +51,12 @@
   },
   "peerDependenciesMeta": {
     "@react-three/fiber": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    },
+    "react-dom": {
       "optional": true
     }
   },

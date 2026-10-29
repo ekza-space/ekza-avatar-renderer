@@ -138,3 +138,29 @@ import { AssetPreview, PREVIEW_LIGHTING_PRESETS } from "@ekza/avatar-renderer/pr
 Resolve authorization and approved URLs in the host. Open previews on demand,
 keep a poster fallback, and prefer one active canvas for a catalogue. Web lighting
 is illustrative, not a promise of pixel-identical results in a game engine.
+## Framework-independent runtime
+
+`@ekza/avatar-renderer/runtime` exposes the same VRM loader, disposal, bounded
+model-byte cache, posed bounds, normalization, camera framing and shared
+humanoid animations without importing React or R3F. React peers are optional
+for applications using only this entry point. Existing React exports and hooks
+remain compatible and share these exact runtime functions and caches.
+
+```ts
+import { buildVrmAsset, getSharedAvatarClips, disposeVrmAsset } from '@ekza/avatar-renderer/runtime';
+const asset = await buildVrmAsset(url);
+// Supply the detected VRM kind when retargeting shared clips.
+const clips = asset.animations.length ? asset.animations : await getSharedAvatarClips({
+  vrm: asset.vrm, vrmKind: asset.vrm.meta?.metaVersion === '0' ? 'vrm0' : 'vrm1',
+  hipsPosition: false,
+});
+// Shared clips drive normalized bones; embedded clips drive raw bones.
+asset.vrm.humanoid.autoUpdateHumanBones = asset.animations.length === 0;
+// The host owns its mixer, canvas and scene lifecycle.
+// On replacement/unmount, stop and uncache the mixer before disposing the asset.
+disposeVrmAsset(asset);
+```
+
+The local `assets-browser` app consumes this runtime for both interactive
+inspection and transparent thumbnail rendering. Rebuild its browser bundle
+with `npm run build` after changing the SDK.
