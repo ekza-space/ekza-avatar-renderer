@@ -45,8 +45,8 @@ import {
   configureAvatarVrmLoader,
   detectVrmKind,
   disposeVrm,
-} from "./vrm";
-import { getSharedAvatarClips } from "./sharedAnimations";
+} from "./vrmRuntime";
+import { getSharedAvatarClips } from "./sharedAnimationRuntime";
 import { startPreviewAnimation } from "./previewAnimation";
 
 export type AssetPreviewProps = {
